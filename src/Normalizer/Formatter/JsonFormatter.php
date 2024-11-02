@@ -17,7 +17,7 @@ use function is_null;
 use function is_scalar;
 use function json_encode;
 
-use const JSON_THROW_ON_ERROR;
+use const JSON_FORCE_OBJECT;
 
 /** @internal */
 final class JsonFormatter implements StreamFormatter
@@ -31,6 +31,11 @@ final class JsonFormatter implements StreamFormatter
     ) {}
 
     public function format(mixed $value): void
+    {
+        $this->formatRecursively($value, 1);
+    }
+
+    private function formatRecursively(mixed $value, int $depth): void
     {
         if (is_null($value)) {
             $this->write('null');
@@ -54,16 +59,25 @@ final class JsonFormatter implements StreamFormatter
             // afterward, this leads to a JSON array being written, while it
             // should have been an object. This is a trade-off we accept,
             // considering most generators starting at 0 are actually lists.
-            $isList = ($value instanceof Generator && $value->key() === 0)
-                || (is_array($value) && array_is_list($value));
+            $isList = ! ($this->jsonEncodingOptions & JSON_FORCE_OBJECT)
+                && (
+                    ($value instanceof Generator && $value->key() === 0)
+                    || (is_array($value) && array_is_list($value))
+                );
 
             $isFirst = true;
 
             $this->write($isList ? '[' : '{');
 
             foreach ($value as $key => $val) {
+                $chunk = '';
+
                 if (! $isFirst) {
-                    $this->write(',');
+                    $chunk = ',';
+                }
+
+                if ($this->jsonEncodingOptions & JSON_PRETTY_PRINT) {
+                    $chunk .= PHP_EOL . str_repeat('    ', $depth);
                 }
 
                 $isFirst = false;
@@ -71,13 +85,27 @@ final class JsonFormatter implements StreamFormatter
                 if (! $isList) {
                     $key = json_encode((string)$key, $this->jsonEncodingOptions);
 
-                    $this->write($key . ':');
+                    $chunk .= $key . ':';
+
+                    if ($this->jsonEncodingOptions & JSON_PRETTY_PRINT) {
+                        $chunk .= ' ';
+                    }
                 }
 
-                $this->format($val);
+                $this->write($chunk);
+
+                $this->formatRecursively($val, $depth + 1);
             }
 
-            $this->write($isList ? ']' : '}');
+            $chunk = '';
+
+            if ($this->jsonEncodingOptions & JSON_PRETTY_PRINT) {
+                $chunk = PHP_EOL . str_repeat('    ', $depth - 1);
+            }
+
+            $chunk .= $isList ? ']' : '}';
+
+            $this->write($chunk);
         } else {
             throw new CannotFormatInvalidTypeToJson($value);
         }

@@ -30,6 +30,7 @@ use Traversable;
 
 use function array_merge;
 
+use const JSON_FORCE_OBJECT;
 use const JSON_HEX_TAG;
 use const JSON_THROW_ON_ERROR;
 
@@ -194,6 +195,21 @@ final class NormalizerTest extends IntegrationTestCase
             'expected json' => '{"foo":"foo","bar":"bar"}',
         ];
 
+        yield 'list' => [
+            'input' => ['foo', 'bar'],
+            'expected array' => ['foo', 'bar'],
+            'expected json' => '["foo","bar"]',
+        ];
+
+        yield 'list kept as object in json' => [
+            'input' => ['foo', 'bar'],
+            'expected array' => ['foo', 'bar'],
+            'expected json' => '{"0":"foo","1":"bar"}',
+            [],
+            [],
+            JSON_FORCE_OBJECT
+        ];
+
         yield 'ArrayObject' => [
             'input' => new ArrayObject(['foo' => 'foo', 'bar' => 'bar']),
             'expected array' => [
@@ -258,6 +274,16 @@ final class NormalizerTest extends IntegrationTestCase
             'input' => BackedIntegerEnum::FOO,
             'expected array' => 42,
             'expected json' => '42',
+        ];
+
+        yield 'enum with transformer attribute' => [
+            'input' => SomeEnumWithTransformerAttribute::FOO,
+            'expected array' => 'normalizedValue-foo',
+            'expected json' => '"normalizedValue-foo"',
+            'transformers' => [],
+            'transformerAttributes' => [
+                TransformEnumToString::class,
+            ],
         ];
 
         yield 'class with public properties' => [
@@ -721,6 +747,61 @@ final class NormalizerTest extends IntegrationTestCase
             'expected array' => [],
             'expected_json' => '{}',
         ];
+
+        yield 'nested array with JSON_PRETTY_PRINT option' => [
+            'input' => [
+                'value' => 'foo',
+                'list' => [
+                    'foo',
+                    42,
+                    ['sub']
+                ],
+                'associative' => [
+                    'value' => 'foo',
+                    'sub' => [
+                        'string' => 'foo',
+                        'integer' => 42,
+                    ],
+                ],
+            ],
+            'expected array' => [
+                'value' => 'foo',
+                'list' => [
+                    'foo',
+                    42,
+                    ['sub']
+                ],
+                'associative' => [
+                    'value' => 'foo',
+                    'sub' => [
+                        'string' => 'foo',
+                        'integer' => 42,
+                    ],
+                ],
+            ],
+            'expected_json' => <<<JSON
+            {
+                "value": "foo",
+                "list": [
+                    "foo",
+                    42,
+                    [
+                        "sub"
+                    ]
+                ],
+                "associative": {
+                    "value": "foo",
+                    "sub": {
+                        "string": "foo",
+                        "integer": 42
+                    }
+                }
+            }
+            JSON,
+            'transformers' => [],
+            'transformerAttributes' => [],
+            'jsonEncodingOptions' => JSON_PRETTY_PRINT,
+        ];
     }
 
     public function test_generator_of_scalar_yields_expected_array(): void
@@ -1148,16 +1229,7 @@ final class NormalizerTest extends IntegrationTestCase
 
     public function test_json_transformer_only_accepts_acceptable_json_options(): void
     {
-        $normalizer = $this->mapperBuilder()->normalizer(Format::json())->withOptions(JSON_FORCE_OBJECT);
-        self::assertSame(JSON_THROW_ON_ERROR, (fn () => $this->jsonEncodingOptions)->call($normalizer));
-
         $normalizer = $this->mapperBuilder()->normalizer(Format::json())->withOptions(JSON_PARTIAL_OUTPUT_ON_ERROR);
-        self::assertSame(JSON_THROW_ON_ERROR, (fn () => $this->jsonEncodingOptions)->call($normalizer));
-
-        $normalizer = $this->mapperBuilder()->normalizer(Format::json())->withOptions(JSON_PRETTY_PRINT);
-        self::assertSame(JSON_THROW_ON_ERROR, (fn () => $this->jsonEncodingOptions)->call($normalizer));
-
-        $normalizer = $this->mapperBuilder()->normalizer(Format::json())->withOptions(JSON_FORCE_OBJECT | JSON_PARTIAL_OUTPUT_ON_ERROR | JSON_PRETTY_PRINT);
         self::assertSame(JSON_THROW_ON_ERROR, (fn () => $this->jsonEncodingOptions)->call($normalizer));
     }
 }
@@ -1368,3 +1440,19 @@ final class SomeClassWithAttributeOnPropertyAndOnClass
 
 #[TransformObjectToString]
 final class SomeClassWithAttributeToTransformObjectToString {}
+
+#[Attribute(Attribute::TARGET_CLASS)]
+final class TransformEnumToString
+{
+    public function normalize(SomeEnumWithTransformerAttribute $enum): string
+    {
+        return 'normalizedValue-' . $enum->value;
+    }
+}
+
+#[TransformEnumToString]
+enum SomeEnumWithTransformerAttribute: string
+{
+    case FOO = 'foo';
+    case BAR = 'bar';
+}
