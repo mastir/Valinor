@@ -21,5 +21,5 @@ interface InterfaceResolver
     /**
      * @return array<string|int,mixed>
      */
-    public function transform(object $input, callable $next): array;
+    public function transform(object $input, callable $next): mixed;
 }
