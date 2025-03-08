@@ -114,6 +114,7 @@ final class Container
                         $settings->customConstructors
                     ),
                     $settings->exceptionFilter,
+                    $settings->interfaceResolver,
                 );
 
                 if (count($settings->valueModifier) > 0) {

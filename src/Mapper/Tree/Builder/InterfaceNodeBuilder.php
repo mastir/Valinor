@@ -6,6 +6,7 @@ namespace CuyZ\Valinor\Mapper\Tree\Builder;
 
 use CuyZ\Valinor\Definition\FunctionsContainer;
 use CuyZ\Valinor\Definition\Repository\ClassDefinitionRepository;
+use CuyZ\Valinor\InterfaceResolver;
 use CuyZ\Valinor\Mapper\Object\Arguments;
 use CuyZ\Valinor\Mapper\Object\ArgumentsValues;
 use CuyZ\Valinor\Mapper\Object\Exception\InvalidSource;
@@ -30,6 +31,7 @@ final class InterfaceNodeBuilder implements NodeBuilder
         private FunctionsContainer $constructors,
         /** @var callable(Throwable): ErrorMessage */
         private mixed $exceptionFilter,
+        private InterfaceResolver $interfaceResolver,
     ) {}
 
     public function build(Shell $shell, RootNodeBuilder $rootBuilder): TreeNode
@@ -58,6 +60,19 @@ final class InterfaceNodeBuilder implements NodeBuilder
 
         if (! $this->implementations->has($className)) {
             if ($type instanceof InterfaceType || $this->classDefinitionRepository->for($type)->isAbstract) {
+                 if ($this->interfaceResolver){
+                    $value = $shell->value();
+                     $resolver_props = [];
+                    foreach($this->interfaceResolver->getResolverProps($className) as $prop){
+                         $resolver_props[$prop] = $value[$prop];
+                         unset($value[$prop]);
+                    }
+                    $resolvedClassName = $this->interfaceResolver->resolve($className, $resolver_props);
+                    if ($resolvedClassName !== null) {
+                        $shell = $shell->withType(new NativeClassType($resolvedClassName))->withValue($value);
+                        return $this->delegate->build($shell, $rootBuilder);
+                    }
+                }
                 throw new CannotResolveObjectType($className);
             }
 
